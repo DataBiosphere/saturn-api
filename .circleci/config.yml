@@ -1,0 +1,49 @@
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: node:8
+    steps:
+      - checkout
+      - run: tar -czf build.tgz app.yaml package.json src
+      - store_artifacts:
+          path: build.tgz
+      - persist_to_workspace:
+          root: /root/project
+          paths:
+            - app.yaml
+            - config.json
+            - package.json
+            - src
+  deploy-dev:
+    docker:
+      - image: google/cloud-sdk:latest
+    steps:
+      - attach_workspace:
+          at: /root/project
+      - run: echo "$SA_KEY_JSON" > /tmp/sa.json
+      - run: gcloud auth activate-service-account --key-file=/tmp/sa.json
+      - run: gcloud app deploy --project=bvdp-saturn-dev --promote --quiet
+  deploy-prod:
+    docker:
+      - image: google/cloud-sdk:latest
+    steps:
+      - run: |
+          set -o nounset
+          curl -s -f "$ARTIFACT_URL" | tar -xz
+          echo "$CONFIG_JSON" > config.json
+          echo "$SA_KEY_JSON" > /tmp/sa.json
+          gcloud auth activate-service-account --key-file=/tmp/sa.json
+          gcloud app deploy --project=bvdp-saturn-prod --promote --quiet
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - build
+      - deploy-dev:
+          requires:
+            - build
+          filters:
+            branches:
+              only: dev
