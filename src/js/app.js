@@ -84,16 +84,18 @@ function circleRequest(options) {
 }
 
 async function findBuild(repoName, buildNumber, remainingAttempts) {
-  if (remainingAttempts > 0) {
+  if (remainingAttempts >= 0) {
     const buildRes = await circleRequest({
       path: `/project/github/DataBiosphere/${repoName}/${buildNumber}`
     })
     const build = JSON.parse(buildRes.body)
-    if (build.workflows.job_name !== 'build') {
+    if (!build.workflows || build.workflows.job_name !== 'build') {
       return findBuild(repoName, build.previous_successful_build.build_num, remainingAttempts - 1)
     } else {
       return build
     }
+  } else {
+    throw new Error(`Build not found (last build number: ${buildNumber})`)
   }
 }
 
@@ -104,7 +106,7 @@ function delay(milliseconds) {
 }
 
 function waitForOutcome(repoName, buildNumber, waitMilliseconds, remainingAttempts) {
-  if (remainingAttempts > 0) {
+  if (remainingAttempts >= 0) {
     return new Promise(async (resolve, reject) => {
       const res = await circleRequest({
         path: `/project/github/DataBiosphere/${repoName}/${buildNumber}`
@@ -125,7 +127,7 @@ async function findLastSuccessfulDevBuild(projectRepoName) {
   const projectsRes = await circleRequest({path: '/projects'})
   const repoUrl = `https://github.com/DataBiosphere/${projectRepoName}`
   const project = JSON.parse(projectsRes.body).filter((x) => x.vcs_url === repoUrl)[0]
-  return await findBuild(project.reponame, project.branches.dev.last_success.build_num, 3)
+  return await findBuild(project.reponame, project.branches.dev.last_success.build_num, 10)
 }
 
 async function getFirstArtifactsUrl(repoName, build) {
@@ -206,22 +208,35 @@ async function deployProd(repoName, includeConfigJson, res) {
   })
 }
 
-app.get('/deploy-api-prod', async (req, res) => {
-  // if (!(req.get('x-appengine-cron') === 'true')) {
-  //   res.status(403).end(formatObj({error: "unauthorized"}))
-  //   return
-  // }
+async function authDeployProd(req, res, f) {
+  if (!(req.get('x-appengine-cron') === 'true')) {
+    res.status(403).end(formatObj({error: {message: "unauthorized"}}))
+    return
+  }
+  const projectId = await google.auth.getDefaultProjectId()
+  if (projectId !== 'bvdp-saturn-prod') {
+    res.status(400).end(formatObj({error: {message: 'This endpoint available only in prod'}}))
+    return
+  }
+  f()
+}
 
-  await deployProd('saturn-api', true, res).catch(err => console.error(err))
+app.get('/deploy-api-prod', (req, res) => {
+  authDeployProd(req, res, () => {
+    deployProd('saturn-api', true, res).catch(err => {
+      console.error(err)
+      res.status(500).end()
+    })
+  })
 })
 
 app.get('/deploy-ui-prod', async (req, res) => {
-  // if (!(req.get('x-appengine-cron') === 'true')) {
-  //   res.status(403).end(formatObj({error: "unauthorized"}))
-  //   return
-  // }
-
-  await deployProd('saturn-ui', false, res).catch(err => console.error(err))
+  authDeployProd(req, res, () => {
+    deployProd('saturn-ui', false, res).catch(err => {
+      console.error(err)
+      res.status(500).end()
+    })
+  })
 })
 
 app.get('/liveness-check', (req, res) => {
