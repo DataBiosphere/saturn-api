@@ -228,4 +228,10 @@ app.get('/readiness-check', (req, res) => {
 })
 
 const port = 8080;
-app.listen(port, () => console.log(`App listening on port ${port}.`))
+app.listen(port, () => {
+  console.log('Saturn API')
+  console.log(`  Port: ${port}`)
+  const obfuscatedToken =
+    circleApiToken.substring(0, 6) + (new Array(circleApiToken.length - 6 + 1).join('*'))
+  console.log(`  CIRCLE API TOKEN: ${obfuscatedToken}`)
+})
