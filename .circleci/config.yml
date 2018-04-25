@@ -23,7 +23,7 @@ jobs:
           at: /root/project
       - run: echo "$SA_KEY_JSON" > /tmp/sa.json
       - run: gcloud auth activate-service-account --key-file=/tmp/sa.json
-      - run: gcloud cp gs://bvdp-saturn-dev-config/config.json config.json
+      - run: gsutil cp gs://bvdp-saturn-dev-config/config.json config.json
       - run: gcloud app deploy --project=bvdp-saturn-dev --promote --quiet
   deploy-prod:
     docker:
