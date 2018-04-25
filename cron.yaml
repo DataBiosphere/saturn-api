@@ -1,0 +1,19 @@
+cron:
+- description: "Monday production deploy of UI"
+  target: api
+  url: /deploy-ui-prod
+  schedule: every monday 05:00
+  retry_parameters:
+    job_retry_limit: 0
+- description: "Wednesday production deploy of UI"
+  target: api
+  url: /deploy-ui-prod
+  schedule: every wednesday 05:00
+  retry_parameters:
+    job_retry_limit: 0
+- description: "Friday production deploy of UI"
+  target: api
+  url: /deploy-ui-prod
+  schedule: every friday 05:00
+  retry_parameters:
+    job_retry_limit: 0

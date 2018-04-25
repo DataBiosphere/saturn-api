@@ -17,6 +17,10 @@ const {circleApiToken} = config
 
 app.use(cors())
 
+function obfuscateString(s, visibleLength) {
+  return s.substring(0, visibleLength) + (new Array(s.length - visibleLength + 1).join('*'))
+}
+
 function formatObj(obj) {
   return JSON.stringify(obj, null, 2)+'\n'
 }
@@ -99,18 +103,19 @@ function delay(milliseconds) {
   })
 }
 
-function waitForOutcome(buildNumber, waitMilliseconds, remainingAttempts) {
+function waitForOutcome(repoName, buildNumber, waitMilliseconds, remainingAttempts) {
   if (remainingAttempts > 0) {
     return new Promise(async (resolve, reject) => {
       const res = await circleRequest({
-        path: `/project/github/DataBiosphere/saturn-ui/${buildNumber}`
+        path: `/project/github/DataBiosphere/${repoName}/${buildNumber}`
       })
       const build = JSON.parse(res.body)
       if (build.outcome) {
         resolve(build)
       } else {
         await delay(waitMilliseconds)
-        resolve(await waitForOutcome(buildNumber, waitMilliseconds, remainingAttempts - 1))
+        resolve(
+          await waitForOutcome(repoName, buildNumber, waitMilliseconds, remainingAttempts - 1))
       }
     })
   }
@@ -186,7 +191,7 @@ async function deployProd(repoName, includeConfigJson, res) {
       }))
     } else {
       const newBuildNum = JSON.parse(circleRes.body).build_num
-      const build = await waitForOutcome(newBuildNum, 2000, 30)
+      const build = await waitForOutcome(repoName, newBuildNum, 10000, 60)
       if (build) {
         res.status(204).end()
       } else {
@@ -231,7 +236,5 @@ const port = 8080;
 app.listen(port, () => {
   console.log('Saturn API')
   console.log(`  Port: ${port}`)
-  const obfuscatedToken =
-    circleApiToken.substring(0, 6) + (new Array(circleApiToken.length - 6 + 1).join('*'))
-  console.log(`  CIRCLE API TOKEN: ${obfuscatedToken}`)
+  console.log(`  Circle API Token: ${obfuscateString(circleApiToken, 6)}`)
 })
