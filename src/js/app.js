@@ -21,10 +21,22 @@ function formatObj(obj) {
   return JSON.stringify(obj, null, 2)+'\n'
 }
 
+async function getScopedGoogleAuthClient(options) {
+  // Scopes must be passed in to `getClient` [1] when this is running on AppEngine. When running
+  // locally, scopes must be requested explicitly [2]. `createScopedRequired` is true in that case.
+  const client = await google.auth.getClient(options) // [1]
+  if (client.createScopedRequired()) {
+    const {scopes} = options
+    return client.createScoped(scopes) // [2]
+  } else {
+    return client
+  }
+}
+
 async function withAppEngineDefaultSaKey(f) {
   // TODO(dmohs): Which scope is actually required?
   const scopes = ['https://www.googleapis.com/auth/cloud-platform']
-  const client = (await google.auth.getClient()).createScoped(scopes)
+  const client = await getScopedGoogleAuthClient({scopes})
   const projectId = await google.auth.getDefaultProjectId()
 
   iam.projects.serviceAccounts.keys.create({
@@ -67,14 +79,14 @@ function circleRequest(options) {
   return httpsRequest(options)
 }
 
-async function findBuild(buildNumber, remainingAttempts) {
+async function findBuild(repoName, buildNumber, remainingAttempts) {
   if (remainingAttempts > 0) {
     const buildRes = await circleRequest({
-      path: `/project/github/DataBiosphere/saturn-ui/${buildNumber}`
+      path: `/project/github/DataBiosphere/${repoName}/${buildNumber}`
     })
     const build = JSON.parse(buildRes.body)
     if (build.workflows.job_name !== 'build') {
-      return findBuild(build.previous_successful_build.build_num, remainingAttempts - 1)
+      return findBuild(repoName, build.previous_successful_build.build_num, remainingAttempts - 1)
     } else {
       return build
     }
@@ -104,48 +116,56 @@ function waitForOutcome(buildNumber, waitMilliseconds, remainingAttempts) {
   }
 }
 
-async function findLastSuccessfulDevBuild(repoUrl) {
+async function findLastSuccessfulDevBuild(projectRepoName) {
   const projectsRes = await circleRequest({path: '/projects'})
+  const repoUrl = `https://github.com/DataBiosphere/${projectRepoName}`
   const project = JSON.parse(projectsRes.body).filter((x) => x.vcs_url === repoUrl)[0]
-  return await findBuild(project.branches.dev.last_success.build_num, 3)
+  return await findBuild(project.reponame, project.branches.dev.last_success.build_num, 3)
 }
 
-async function getFirstArtifactsUrl(build) {
+async function getFirstArtifactsUrl(repoName, build) {
   const artifactsRes = await circleRequest({
-    path: `/project/github/DataBiosphere/saturn-ui/${build.build_num}/artifacts`
+    path: `/project/github/DataBiosphere/${repoName}/${build.build_num}/artifacts`
   })
   const artifacts = JSON.parse(artifactsRes.body)
   if (artifacts.length === 0) throw "No artifacts found"
   return artifacts[0].url
 }
 
-async function getProdConfigJson() {
-  return new Promise(async (resolve, reject) => {
-    // TODO(dmohs): Which scope is actually required?
-    const scopes = ['https://www.googleapis.com/auth/cloud-platform']
-    const client = (await google.auth.getClient()).createScoped(scopes)
-    storage.objects.get({
-      auth: client,
-      bucket: 'bvdp-saturn-prod-config',
-      object: 'config.json?alt=media'
-    }, async (err, objRes) => {
-      if (err) throw err
-      resolve(objRes.data)
+function storageObjectsGet(options) {
+  return new Promise((resolve, reject) => {
+    storage.objects.get(options, (err, responseObject) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(responseObject)
+      }
     })
   })
 }
 
-async function deployProd(project, includeConfigJson, res) {
-  const repoUrl = `https://github.com/DataBiosphere/${project}`
-  const build = await findLastSuccessfulDevBuild(repoUrl)
-  const artifactUrl = await getFirstArtifactsUrl(build)
+async function getProdConfigJson() {
+  // TODO(dmohs): Which scope is actually required?
+  const scopes = ['https://www.googleapis.com/auth/cloud-platform']
+  const client = await getScopedGoogleAuthClient({scopes})
+  const storageResponseObj = await storageObjectsGet({
+    auth: client,
+    bucket: 'bvdp-saturn-prod-config',
+    object: 'config.json?alt=media'
+  })
+  return storageResponseObj.data
+}
+
+async function deployProd(repoName, includeConfigJson, res) {
+  const build = await findLastSuccessfulDevBuild(repoName)
+  const artifactUrl = await getFirstArtifactsUrl(repoName, build)
   let configJson = undefined;
   if (includeConfigJson) {
     configJson = await getProdConfigJson()
   }
   withAppEngineDefaultSaKey(async (key) => {
     const circleRes = await circleRequest({
-      path: `/project/github/DataBiosphere/${project}/tree/dev`,
+      path: `/project/github/DataBiosphere/${repoName}/tree/dev`,
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: formatObj({
@@ -187,7 +207,7 @@ app.get('/deploy-api-prod', async (req, res) => {
   //   return
   // }
 
-  await deployProd('saturn-api', true, res)
+  await deployProd('saturn-api', true, res).catch(err => console.error(err))
 })
 
 app.get('/deploy-ui-prod', async (req, res) => {
@@ -196,7 +216,15 @@ app.get('/deploy-ui-prod', async (req, res) => {
   //   return
   // }
 
-  await deployProd('saturn-ui', false, res)
+  await deployProd('saturn-ui', false, res).catch(err => console.error(err))
+})
+
+app.get('/liveness-check', (req, res) => {
+  res.end('live\n')
+})
+
+app.get('/readiness-check', (req, res) => {
+  res.end('ready\n')
 })
 
 const port = 8080;
