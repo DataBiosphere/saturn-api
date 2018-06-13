@@ -239,14 +239,6 @@ app.get('/deploy-ui-prod', async (req, res) => {
   })
 })
 
-app.get('/liveness-check', (req, res) => {
-  res.end('live\n')
-})
-
-app.get('/readiness-check', (req, res) => {
-  res.end('ready\n')
-})
-
 const port = 8080;
 app.listen(port, () => {
   console.log('Saturn API')
