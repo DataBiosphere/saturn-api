@@ -5,3 +5,10 @@ cron:
   schedule: every mon,tues,wed,thurs,fri 15:00
   retry_parameters:
     job_retry_limit: 0
+
+- description: "Weekday production deploy of API"
+  target: api
+  url: /deploy-api-prod
+  schedule: every mon,tues,wed,thurs,fri 14:30
+  retry_parameters:
+    job_retry_limit: 0
