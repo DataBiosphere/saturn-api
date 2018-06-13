@@ -1,31 +1,7 @@
 cron:
-- description: "Monday production deploy of UI"
+- description: "Weekday production deploy of UI"
   target: api
   url: /deploy-ui-prod
-  schedule: every monday 15:00
-  retry_parameters:
-    job_retry_limit: 0
-- description: "Tuesday production deploy of UI"
-  target: api
-  url: /deploy-ui-prod
-  schedule: every tuesday 15:00
-  retry_parameters:
-    job_retry_limit: 0
-- description: "Wednesday production deploy of UI"
-  target: api
-  url: /deploy-ui-prod
-  schedule: every wednesday 15:00
-  retry_parameters:
-    job_retry_limit: 0
-- description: "Thursday production deploy of UI"
-  target: api
-  url: /deploy-ui-prod
-  schedule: every thursday 15:00
-  retry_parameters:
-    job_retry_limit: 0
-- description: "Friday production deploy of UI"
-  target: api
-  url: /deploy-ui-prod
-  schedule: every friday 15:00
+  schedule: every mon,tues,wed,thurs,fri 15:00
   retry_parameters:
     job_retry_limit: 0
