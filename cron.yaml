@@ -2,13 +2,13 @@ cron:
 - description: "Weekday production deploy of UI"
   target: api
   url: /deploy-ui-prod
-  schedule: every mon,tues,wed,thurs,fri 15:00
+  schedule: every monday,tuesday,wednesday,thursday,friday 15:00
   retry_parameters:
     job_retry_limit: 0
 
 - description: "Weekday production deploy of API"
   target: api
   url: /deploy-api-prod
-  schedule: every mon,tues,wed,thurs,fri 14:30
+  schedule: every monday,tuesday,wednesday,thursday,friday 14:30
   retry_parameters:
     job_retry_limit: 0
