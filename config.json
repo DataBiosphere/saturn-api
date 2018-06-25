@@ -1,3 +1,4 @@
 {
-  "circleApiToken": "EXAMPLE-CIRCLE-CI-API-TOKEN"
+  "circleApiToken": "EXAMPLE-CIRCLE-CI-API-TOKEN",
+  "googleCloudBillingKey": "EXAMPLE-GOOGLE-API-KEY"
 }
