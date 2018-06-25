@@ -5,7 +5,9 @@ const fs = require('fs')
 const { google } = require('googleapis')
 const https = require('https')
 const iam = google.iam('v1')
-const storage = google.storage('v1')
+const Storage = require('@google-cloud/storage')
+
+const storage = new Storage()
 
 const app = express()
 const circleHostname = 'circleci.com'
@@ -140,28 +142,13 @@ async function getFirstArtifactsUrl(repoName, build) {
   return artifacts[0].url
 }
 
-function storageObjectsGet(options) {
-  return new Promise((resolve, reject) => {
-    storage.objects.get(options, (err, responseObject) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve(responseObject)
-      }
-    })
-  })
-}
-
 async function getProdConfigJson() {
-  // TODO(dmohs): Which scope is actually required?
-  const scopes = ['https://www.googleapis.com/auth/cloud-platform']
-  const client = await getScopedGoogleAuthClient({ scopes })
-  const storageResponseObj = await storageObjectsGet({
-    auth: client,
-    bucket: 'bvdp-saturn-prod-config',
-    object: 'config.json?alt=media'
-  })
-  return storageResponseObj.data
+  const storageResponseObj = await storage
+    .bucket('bvdp-saturn-prod-config')
+    .file('config.json')
+    .download()
+
+  return storageResponseObj.toString()
 }
 
 async function deployProd(repoName, includeConfigJson, res) {
@@ -218,15 +205,11 @@ async function updateDownloadPrice(res) {
   // sku described as "Download Worldwide Destinations (excluding Asia & Australia)"
   const naDownloadPrice = _.find({ skuId: '22EB-AAE8-FBCD' }, JSON.parse(prices.body).skus).pricingInfo[0]
 
-  await storage.objects.insert({
-    auth: await getScopedGoogleAuthClient({ scopes: gcpScopes }),
-    bucket: 'bvdp-saturn-prod-cloud-pricing',
-    name: 'na-download-prices.json',
-    media: {
-      mimeType: 'application/json',
-      body: naDownloadPrice
-    }
-  })
+  await storage
+    .bucket('bvdp-saturn-prod-cloud-pricing')
+    .file('na-download-prices.json')
+    .save(JSON.stringify(naDownloadPrice), { public: true })
+
 
   res.status(204).end()
 }
