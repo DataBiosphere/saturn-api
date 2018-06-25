@@ -1,9 +1,9 @@
+const _ = require('lodash/fp')
 const cors = require('cors')
 const express = require('express')
 const fs = require('fs')
-const {google} = require('googleapis')
+const { google } = require('googleapis')
 const https = require('https')
-const {URL} = require('url')
 const iam = google.iam('v1')
 const storage = google.storage('v1')
 
@@ -11,9 +11,11 @@ const app = express()
 const circleHostname = 'circleci.com'
 const circleRootPath = '/api/v1.1'
 
-const config = JSON.parse(fs.readFileSync('config.json'))
+const config = JSON.parse(fs.readFileSync('config.json').toString())
 
-const {circleApiToken} = config
+const { circleApiToken, googleCloudBillingKey } = config
+
+const gcpScopes = ['https://www.googleapis.com/auth/cloud-platform']
 
 app.use(cors())
 
@@ -22,7 +24,7 @@ function obfuscateString(s, visibleLength) {
 }
 
 function formatObj(obj) {
-  return JSON.stringify(obj, null, 2)+'\n'
+  return JSON.stringify(obj, null, 2) + '\n'
 }
 
 async function getScopedGoogleAuthClient(options) {
@@ -30,7 +32,7 @@ async function getScopedGoogleAuthClient(options) {
   // locally, scopes must be requested explicitly [2]. `createScopedRequired` is true in that case.
   const client = await google.auth.getClient(options) // [1]
   if (client.createScopedRequired()) {
-    const {scopes} = options
+    const { scopes } = options
     return client.createScoped(scopes) // [2]
   } else {
     return client
@@ -39,29 +41,28 @@ async function getScopedGoogleAuthClient(options) {
 
 async function withAppEngineDefaultSaKey(f) {
   // TODO(dmohs): Which scope is actually required?
-  const scopes = ['https://www.googleapis.com/auth/cloud-platform']
-  const client = await getScopedGoogleAuthClient({scopes})
+  const client = await getScopedGoogleAuthClient({ scopes: gcpScopes })
   const projectId = await google.auth.getDefaultProjectId()
 
   iam.projects.serviceAccounts.keys.create({
     auth: client,
     name: `projects/-/serviceAccounts/${projectId}@appspot.gserviceaccount.com`
-  }, (err, saRes)=> {
+  }, (err, saRes) => {
     if (err) throw err
-    appEngineDefaultSaKey = Buffer.from(saRes.data.privateKeyData, 'base64').toString()
+    const appEngineDefaultSaKey = Buffer.from(saRes.data.privateKeyData, 'base64').toString()
     Promise.resolve(f(appEngineDefaultSaKey)).then(() => {
-      iam.projects.serviceAccounts.keys.delete({auth: client, name: saRes.data.name})
+      iam.projects.serviceAccounts.keys.delete({ auth: client, name: saRes.data.name })
     })
   })
 }
 
 function httpsRequest(options) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const req = https.request(
       options,
       (res) => {
         let body = ''
-        res.on('data', (chunk) => body+=chunk)
+        res.on('data', (chunk) => body += chunk)
         res.on('end', () => {
           res.body = body
           resolve(res)
@@ -77,7 +78,7 @@ function httpsRequest(options) {
 
 function circleRequest(options) {
   options.hostname = circleHostname
-  options.path = circleRootPath+options.path+`?circle-token=${circleApiToken}`
+  options.path = circleRootPath + options.path + `?circle-token=${circleApiToken}`
   options.headers = options.headers || {}
   options.headers['Accept'] = '*/*'
   return httpsRequest(options)
@@ -107,7 +108,7 @@ function delay(milliseconds) {
 
 function waitForOutcome(repoName, buildNumber, waitMilliseconds, remainingAttempts) {
   if (remainingAttempts >= 0) {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (resolve) => {
       const res = await circleRequest({
         path: `/project/github/DataBiosphere/${repoName}/${buildNumber}`
       })
@@ -124,7 +125,7 @@ function waitForOutcome(repoName, buildNumber, waitMilliseconds, remainingAttemp
 }
 
 async function findLastSuccessfulDevBuild(projectRepoName) {
-  const projectsRes = await circleRequest({path: '/projects'})
+  const projectsRes = await circleRequest({ path: '/projects' })
   const repoUrl = `https://github.com/DataBiosphere/${projectRepoName}`
   const project = JSON.parse(projectsRes.body).filter((x) => x.vcs_url === repoUrl)[0]
   return await findBuild(project.reponame, project.branches.dev.last_success.build_num, 10)
@@ -135,7 +136,7 @@ async function getFirstArtifactsUrl(repoName, build) {
     path: `/project/github/DataBiosphere/${repoName}/${build.build_num}/artifacts`
   })
   const artifacts = JSON.parse(artifactsRes.body)
-  if (artifacts.length === 0) throw "No artifacts found"
+  if (artifacts.length === 0) throw 'No artifacts found'
   return artifacts[0].url
 }
 
@@ -154,7 +155,7 @@ function storageObjectsGet(options) {
 async function getProdConfigJson() {
   // TODO(dmohs): Which scope is actually required?
   const scopes = ['https://www.googleapis.com/auth/cloud-platform']
-  const client = await getScopedGoogleAuthClient({scopes})
+  const client = await getScopedGoogleAuthClient({ scopes })
   const storageResponseObj = await storageObjectsGet({
     auth: client,
     bucket: 'bvdp-saturn-prod-config',
@@ -166,7 +167,7 @@ async function getProdConfigJson() {
 async function deployProd(repoName, includeConfigJson, res) {
   const build = await findLastSuccessfulDevBuild(repoName)
   const artifactUrl = await getFirstArtifactsUrl(repoName, build)
-  let configJson = undefined;
+  let configJson = undefined
   if (includeConfigJson) {
     configJson = await getProdConfigJson()
   }
@@ -174,7 +175,7 @@ async function deployProd(repoName, includeConfigJson, res) {
     const circleRes = await circleRequest({
       path: `/project/github/DataBiosphere/${repoName}/tree/dev`,
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: formatObj({
         build_parameters: {
           CIRCLE_JOB: 'deploy-prod',
@@ -199,7 +200,7 @@ async function deployProd(repoName, includeConfigJson, res) {
       } else {
         res.status(500).end(formatObj({
           error: {
-            message: "Timeout waiting for build to complete.",
+            message: 'Timeout waiting for build to complete.',
             buildNumber: newBuildNum
           }
         }))
@@ -208,14 +209,36 @@ async function deployProd(repoName, includeConfigJson, res) {
   })
 }
 
+async function updateDownloadPrice(res) {
+  const prices = await httpsRequest({
+    hostname: 'cloudbilling.googleapis.com',
+    path: `/v1/services/95FF-2EF5-5EA1/skus?fields=skus(pricingInfo%2CskuId)&key=${googleCloudBillingKey}`
+  })
+
+  // sku described as "Download Worldwide Destinations (excluding Asia & Australia)"
+  const naDownloadPrice = _.find({ skuId: '22EB-AAE8-FBCD' }, JSON.parse(prices.body).skus).pricingInfo[0]
+
+  await storage.objects.insert({
+    auth: await getScopedGoogleAuthClient({ scopes: gcpScopes }),
+    bucket: 'bvdp-saturn-prod-cloud-pricing',
+    name: 'na-download-prices.json',
+    media: {
+      mimeType: 'application/json',
+      body: naDownloadPrice
+    }
+  })
+
+  res.status(204).end()
+}
+
 async function authDeployProd(req, res, f) {
   if (!(req.get('x-appengine-cron') === 'true')) {
-    res.status(403).end(formatObj({error: {message: "unauthorized"}}))
+    res.status(403).end(formatObj({ error: { message: 'unauthorized' } }))
     return
   }
   const projectId = await google.auth.getDefaultProjectId()
   if (projectId !== 'bvdp-saturn-prod') {
-    res.status(400).end(formatObj({error: {message: 'This endpoint available only in prod'}}))
+    res.status(400).end(formatObj({ error: { message: 'This endpoint available only in prod' } }))
     return
   }
   f()
@@ -239,7 +262,16 @@ app.get('/deploy-ui-prod', async (req, res) => {
   })
 })
 
-const port = 8080;
+app.get('/update-download-prices', async (req, res) => {
+  authDeployProd(req, res, () => {
+    updateDownloadPrice(res).catch(err => {
+      console.error(err)
+      res.status(500).end()
+    })
+  })
+})
+
+const port = 8080
 app.listen(port, () => {
   console.log('Saturn API')
   console.log(`  Port: ${port}`)

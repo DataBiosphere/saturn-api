@@ -12,3 +12,8 @@ cron:
   schedule: every monday,tuesday,wednesday,thursday,friday 14:30
   retry_parameters:
     job_retry_limit: 0
+
+- description: "Daily update of Cloud download prices"
+  target: api
+  url: /update-download-price
+  schedule: every day 0:00
