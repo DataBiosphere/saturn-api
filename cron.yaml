@@ -15,5 +15,5 @@ cron:
 
 - description: "Daily update of Cloud download prices"
   target: api
-  url: /update-download-price
+  url: /update-download-prices
   schedule: every day 0:00
