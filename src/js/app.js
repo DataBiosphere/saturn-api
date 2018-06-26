@@ -208,7 +208,10 @@ async function updateDownloadPrice(res) {
   await storage
     .bucket('bvdp-saturn-prod-cloud-pricing')
     .file('na-download-prices.json')
-    .save(JSON.stringify(naDownloadPrice), { public: true })
+    .save(JSON.stringify(naDownloadPrice), {
+      contentType: 'application/json',
+      public: true
+    })
 
 
   res.status(204).end()
