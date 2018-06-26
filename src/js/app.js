@@ -129,7 +129,7 @@ function waitForOutcome(repoName, buildNumber, waitMilliseconds, remainingAttemp
 async function findLastSuccessfulDevBuild(projectRepoName) {
   const projectsRes = await circleRequest({ path: '/projects' })
   const repoUrl = `https://github.com/DataBiosphere/${projectRepoName}`
-  const project = JSON.parse(projectsRes.body).filter((x) => x.vcs_url === repoUrl)[0]
+  const project = _.filter({ vcs_url: repoUrl }, JSON.parse(projectsRes.body))[0]
   return await findBuild(project.reponame, project.branches.dev.last_success.build_num, 10)
 }
 
